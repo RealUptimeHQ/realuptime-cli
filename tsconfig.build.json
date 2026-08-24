@@ -1,0 +1,14 @@
+{
+  "_comment": "The publishable build (REA-223). tsconfig.json is the editor/typecheck config and stays noEmit; this one emits plain ESM JavaScript into dist/ because Node refuses to strip types for anything installed under node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING, verified against Node 22.23.2 with a real `npm i -g` of the raw-.ts tarball), so a package whose bin is a .ts file looks installable and is not. rewriteRelativeImportExtensions turns this source's ./cli.ts specifiers into ./cli.js in the output; the shebang on bin/realuptime.ts is preserved by tsc.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "..",
+    "rewriteRelativeImportExtensions": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["*.ts", "bin/*.ts", "commands/*.ts"],
+  "exclude": ["*.test.ts", "vitest.config.ts", "dist"]
+}
