@@ -27,3 +27,13 @@ export async function checksDelete(client, id) {
     await apiRequest(client, { method: "DELETE", path: `/checks/${encodeURIComponent(id)}` });
     return { deleted: id };
 }
+/** `GET /checks/:id/runs` (REA-1052): a heartbeat monitor's runs, newest
+ * first. `--limit` is 1 to 500; the API clamps reads to the plan's window. */
+export async function checksRuns(client, id, flags) {
+    if (!id) {
+        throw new CliError("Usage: realuptime checks runs <id> [--limit <n>]");
+    }
+    const limit = flagNumber(flags, "limit");
+    const query = limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`;
+    return apiRequest(client, { path: `/checks/${encodeURIComponent(id)}/runs${query}` });
+}

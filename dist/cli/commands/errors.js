@@ -1,10 +1,19 @@
 import { flagBoolean, flagNumber, flagString, requireFlagString } from "../args.js";
 import { CliError } from "../errors.js";
 import { apiRequest } from "../http.js";
-// The upload core is shared with the SDK's bundler plugins and lives in the
-// SDK package, imported by relative path: the CLI stays zero-dependency (no
-// workspace dep to break a future publish), and the logic exists once.
-import { collectSourcemapFiles, formatProgressLine, preflightSourcemapFiles, resolveSourcemapUploadUrl, SourcemapUploadError, uploadSourcemaps, } from "../../errors-js/sourcemaps.js";
+// The upload core is the SDK's (cli/sourcemaps.ts is a copy of it).
+import { collectSourcemapFiles, formatProgressLine, preflightSourcemapFiles, resolveSourcemapUploadUrl, SourcemapUploadError, uploadSourcemaps, } from "../sourcemaps.js";
+/** `POST /errors/projects`: creates an Errors project and returns its ingest
+ * addresses (`dsn`, `sentryDsn`) in the same response -- the only time they
+ * are ever returned (docs/api.md "POST /errors/projects"). The plan's project
+ * allowance applies exactly as it does in the dashboard. */
+export function errorsProjectsCreate(client, flags) {
+    return apiRequest(client, {
+        method: "POST",
+        path: "/errors/projects",
+        body: { name: requireFlagString(flags, "name") },
+    });
+}
 /** `GET /errors/projects/:id/issues` -- the RealUptime Errors read surface
  * (docs/api.md "Errors"), gated on the account holding the Errors product,
  * same as every other errors route. */
@@ -20,6 +29,11 @@ export function errorsIssuesList(client, flags) {
             limit: flagNumber(flags, "limit"),
         },
     });
+}
+/** `GET /errors/projects`: the account's projects, quota and usage. Never an
+ * ingest address: it is shown once, at creation. */
+export function errorsProjectsList(client) {
+    return apiRequest(client, { path: "/errors/projects" });
 }
 /** `POST /errors/releases` (REA-185): announce a release's commit/deploy
  * metadata from CI or a deploy script (docs/api.md "POST /errors/releases").
@@ -43,6 +57,22 @@ export function errorsReleasesAnnounce(client, flags) {
     if (previousRelease !== undefined)
         body.previousRelease = previousRelease;
     return apiRequest(client, { method: "POST", path: "/errors/releases", body });
+}
+/** The status each `errors issues <verb>` moves an issue to. `reopen` is
+ * `open`: the API has no "unresolved". */
+const ISSUE_VERB_STATUS = { resolve: "resolved", ignore: "ignored", reopen: "open" };
+/** `PATCH /errors/issues/:id`: `errors issues resolve|ignore|reopen <id>`.
+ * Sending the status an issue already has succeeds, so a CI step can run it
+ * again. Needs a read-write key (docs/api.md "PATCH /errors/issues/:id"). */
+export function errorsIssuesSetStatus(client, verb, id) {
+    if (!id) {
+        throw new CliError(`Usage: realuptime errors issues ${verb} <id>`);
+    }
+    return apiRequest(client, {
+        method: "PATCH",
+        path: `/errors/issues/${encodeURIComponent(id)}`,
+        body: { status: ISSUE_VERB_STATUS[verb] },
+    });
 }
 /**
  * `realuptime errors sourcemaps upload <dir-or-files...> --release <v>` (REA-254):

@@ -1,4 +1,4 @@
-import { ASSERTION_FIELDS, LIVE_REGIONS } from "./definition.js";
+import { ASSERTION_FIELDS, DEFAULT_CHECK_REGIONS, LIVE_REGIONS } from "./definition.js";
 const ASSERTION_COLUMNS = {
     assertionBodyOp: "assertion_body_op",
     assertionBodyValue: "assertion_body_value",
@@ -33,6 +33,9 @@ export function observedDefinition(row) {
         intervalSeconds: row.interval_seconds,
         regions: [...row.selected_regions],
     };
+    if (row.latency_threshold_ms !== null && row.latency_threshold_ms !== undefined) {
+        def.latencyThresholdMs = row.latency_threshold_ms;
+    }
     for (const field of ASSERTION_FIELDS) {
         const value = row[ASSERTION_COLUMNS[field]];
         if (value !== null && value !== undefined)
@@ -53,7 +56,7 @@ function sortRegions(regions) {
  * default when `regions` is omitted at creation -- so omitting the key
  * means "all four", declaratively, not "leave whatever is there". */
 export function desiredRegions(def) {
-    return def.regions ? sortRegions(def.regions) : [...LIVE_REGIONS];
+    return def.regions ? sortRegions(def.regions) : [...DEFAULT_CHECK_REGIONS];
 }
 export function diffCheck(desired, observed) {
     const changes = [];
@@ -71,6 +74,13 @@ export function diffCheck(desired, observed) {
     const patchRegions = !sameRegionSet(wantRegions, haveRegions);
     if (patchRegions)
         changes.push({ field: "regions", from: sortRegions(haveRegions), to: wantRegions });
+    // latencyThresholdMs edits in place via PATCH /checks/:id, like regions.
+    // An undefined desired value means "leave as is", matching intervalSeconds'
+    // declarative stance rather than treating omission as a clear.
+    const patchLatency = desired.latencyThresholdMs !== undefined && desired.latencyThresholdMs !== observed.latencyThresholdMs;
+    if (patchLatency) {
+        changes.push({ field: "latencyThresholdMs", from: observed.latencyThresholdMs, to: desired.latencyThresholdMs });
+    }
     const want = normalizedAssertions(desired);
     const have = normalizedAssertions(observed);
     let patchAssertions = false;
@@ -80,7 +90,7 @@ export function diffCheck(desired, observed) {
             changes.push({ field, from: have[field], to: want[field] });
         }
     }
-    return { changes, patchRegions, patchAssertions, needsReplace };
+    return { changes, patchRegions, patchLatency, patchAssertions, needsReplace };
 }
 export function buildPlan(definition, rows, options) {
     const actions = [];
@@ -118,7 +128,7 @@ export function buildPlan(definition, rows, options) {
             actions.push({ kind: "replace", name: desired.name, id: match.id, changes: diff.changes, desired });
         }
         else {
-            actions.push({ kind: "update", name: desired.name, id: match.id, changes: diff.changes, patchRegions: diff.patchRegions, patchAssertions: diff.patchAssertions, desired });
+            actions.push({ kind: "update", name: desired.name, id: match.id, changes: diff.changes, patchRegions: diff.patchRegions, patchLatency: diff.patchLatency, patchAssertions: diff.patchAssertions, desired });
         }
     }
     for (const row of rows) {

@@ -13,16 +13,28 @@ import { parseYaml, YamlError } from "./yaml.js";
  * can't quietly diverge; this file re-implements the rules by hand only
  * because the CLI is zero-dependency and can't import zod at runtime.
  *
- * Scope (v1): `checks` only. The REST API has no write endpoint for status
- * pages, components, notification channels, or alert rules today
- * (`GET /status-pages` is read-only; the rest don't exist in /api/v1), so
- * this format does not declare them -- a top-level key the API can't act
- * on is refused with a message saying so, rather than accepted and
- * silently ignored. When those endpoints land, they get added here with
- * their API field names, same as checks.
+ * Scope (v1): `checks` only. Status pages, components and notification
+ * channels have write endpoints and their own commands (`status-pages
+ * create`, `components add`, `channels create`), but they are not declared
+ * here: a channel's credential is write-only, so a file could not be diffed
+ * against the account, and email and Slack are one per account rather than
+ * a list. Alert rules have no endpoint. A top-level key for any of them is
+ * refused with a message saying what to use instead, rather than accepted
+ * and silently ignored.
  */
 export const DEFINITION_VERSION = 1;
-export const LIVE_REGIONS = ["iad", "sjc", "fra", "nrt"];
+/** The API's absolute interval bounds (`MIN_INTERVAL_SECONDS` and
+ * `MAX_INTERVAL_SECONDS` in packages/db/checks.ts), pinned by
+ * `definition-drift.test.ts`. The API refuses a value outside them with
+ * RU-3006; the definition file refuses it before any request is made. */
+export const MIN_INTERVAL_SECONDS = 30;
+export const MAX_INTERVAL_SECONDS = 86_400;
+export const LIVE_REGIONS = ["iad", "sjc", "fra", "nrt", "ord", "yyz", "lhr", "sin", "syd", "gru"];
+/** The server's default when a check specifies no regions: the core four,
+ * NOT every live region -- ord/yyz are tier-gated (Pro/Business) and the
+ * no-regions default must not imply regions a plan may not include. Mirrors
+ * DEFAULT_CHECK_REGIONS in packages/db/checks.ts; the drift test pins both. */
+export const DEFAULT_CHECK_REGIONS = ["iad", "sjc", "fra", "nrt"];
 export const MAX_NAME_LENGTH = 200;
 /** Every field `POST /checks` accepts, in `checkCreateShape` order. */
 export const CHECK_FIELDS = [
@@ -30,6 +42,7 @@ export const CHECK_FIELDS = [
     "url",
     "intervalSeconds",
     "regions",
+    "latencyThresholdMs",
     "assertionBodyOp",
     "assertionBodyValue",
     "assertionBodyCaseSensitive",
@@ -187,6 +200,9 @@ function validateCheckFields(raw, path, issues) {
             issues.push({ path: `${path}.intervalSeconds`, message: "intervalSeconds must be a finite number." });
         else if (v < 1)
             issues.push({ path: `${path}.intervalSeconds`, message: "intervalSeconds must be a positive number." });
+        else if (Math.round(v) < MIN_INTERVAL_SECONDS || Math.round(v) > MAX_INTERVAL_SECONDS) {
+            issues.push({ path: `${path}.intervalSeconds`, message: `intervalSeconds must be between ${MIN_INTERVAL_SECONDS} and ${MAX_INTERVAL_SECONDS} seconds.` });
+        }
         else
             out.intervalSeconds = v;
     }
@@ -308,12 +324,15 @@ export function validateAssertionConsistency(c) {
     return null;
 }
 const TOP_LEVEL_KEYS = ["version", "checks"];
-const NOT_YET_IN_API = {
-    status_pages: "the REST API exposes status pages read-only (GET /status-pages), so they can't be applied from a file yet",
-    statusPages: "the REST API exposes status pages read-only (GET /status-pages), so they can't be applied from a file yet",
-    components: "the REST API has no components endpoint yet",
-    notification_channels: "the REST API has no notification-channels endpoint yet",
-    notificationChannels: "the REST API has no notification-channels endpoint yet",
+const STATUS_PAGES_NOT_IN_FILE = "status pages are not declared in a file; create one with `realuptime status-pages create`";
+const COMPONENTS_NOT_IN_FILE = "components are not declared in a file; add one with `realuptime components add`";
+const CHANNELS_NOT_IN_FILE = "notification channels are not declared in a file, because a channel's credential is write-only and could not be compared with the account; create one with `realuptime channels create`";
+const NOT_IN_FILE = {
+    status_pages: STATUS_PAGES_NOT_IN_FILE,
+    statusPages: STATUS_PAGES_NOT_IN_FILE,
+    components: COMPONENTS_NOT_IN_FILE,
+    notification_channels: CHANNELS_NOT_IN_FILE,
+    notificationChannels: CHANNELS_NOT_IN_FILE,
     alert_rules: "the REST API has no alert-rules endpoint yet",
     alertRules: "the REST API has no alert-rules endpoint yet",
 };
@@ -327,7 +346,7 @@ export function validateDefinition(doc) {
     for (const key of Object.keys(doc)) {
         if (TOP_LEVEL_KEYS.includes(key))
             continue;
-        const why = NOT_YET_IN_API[key];
+        const why = NOT_IN_FILE[key];
         issues.push({
             path: key,
             message: why ? `not supported: ${why}. Remove it from the file.` : `unknown top-level key. Supported: ${TOP_LEVEL_KEYS.join(", ")}.`,

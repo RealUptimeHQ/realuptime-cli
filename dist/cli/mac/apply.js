@@ -57,6 +57,9 @@ async function runAction(client, action, opts) {
             if (action.patchRegions) {
                 await apiRequest(client, { method: "PATCH", path: `/checks/${encodeURIComponent(action.id)}`, body: { regions: desiredRegions(action.desired) } });
             }
+            if (action.patchLatency) {
+                await apiRequest(client, { method: "PATCH", path: `/checks/${encodeURIComponent(action.id)}`, body: { latencyThresholdMs: action.desired.latencyThresholdMs } });
+            }
             if (action.patchAssertions) {
                 await apiRequest(client, { method: "PATCH", path: `/checks/${encodeURIComponent(action.id)}/assertions`, body: assertionsBody(action.desired) });
             }

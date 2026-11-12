@@ -6,4 +6,4 @@
  * "version" so the two cannot drift, and `scripts/publish-cli.mjs` refuses
  * to cut a release when they disagree.
  */
-export const CLI_VERSION = "0.2.0";
+export const CLI_VERSION = "0.3.1"; // x-release-please-version

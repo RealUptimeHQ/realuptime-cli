@@ -1,10 +1,10 @@
 {
   "name": "@realuptime/cli",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Command-line client for the RealUptime REST API and the public outage endpoint. Zero dependencies, Node 22+.",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://realuptime.io/docs/cli",
+  "homepage": "https://docs.realuptime.io/cli",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RealUptimeHQ/realuptime-cli.git"
@@ -33,12 +33,13 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build && npm test",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^22.20.0",
+    "@types/node": "^24.19.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   }
 }
