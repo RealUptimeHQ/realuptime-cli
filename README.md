@@ -23,7 +23,7 @@ npm, from the signed release tarball on GitHub:
 
 <!-- x-release-please-start-version -->
 ```bash
-version=0.3.1
+version=0.4.0
 npm install -g "https://github.com/RealUptimeHQ/realuptime-cli/releases/download/cli-$version/realuptime-cli-$version.tgz"
 ```
 <!-- x-release-please-end -->
@@ -174,9 +174,13 @@ per channel credential to fill in.
 
 ## Source maps
 
-`errors sourcemaps upload` is authenticated by the project's ingest key, not
-the account API key: `--dsn` / `REALUPTIME_ERRORS_DSN`, or `--ingest-key` /
-`REALUPTIME_ERRORS_INGEST_KEY` (origin taken from `--api-url`). A DSN on
+`errors sourcemaps upload` names the project by its DSN (`--dsn` /
+`REALUPTIME_ERRORS_DSN`, or `--ingest-key` / `REALUPTIME_ERRORS_INGEST_KEY`
+with the origin taken from `--api-url`) and is authorised by the account API
+key (`--api-key` / `REALUPTIME_API_KEY`), which needs Errors write access.
+Keep the key in CI secrets: the DSN ships in your app and only sends events.
+Until February 17, 2027 an upload without the key still works and the server's
+warning is printed; after that it is refused. A DSN on
 `ingest.realuptime.io`, which is what every project created since the hostname
 split has, uploads to `https://realuptime.io`: source maps are stored there, not
 on the ingest host. A DSN on any other host (a self-hosted or local one) uploads

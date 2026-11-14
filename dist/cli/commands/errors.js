@@ -2,7 +2,7 @@ import { flagBoolean, flagNumber, flagString, requireFlagString } from "../args.
 import { CliError } from "../errors.js";
 import { apiRequest } from "../http.js";
 // The upload core is the SDK's (cli/sourcemaps.ts is a copy of it).
-import { collectSourcemapFiles, formatProgressLine, preflightSourcemapFiles, resolveSourcemapUploadUrl, SourcemapUploadError, uploadSourcemaps, } from "../sourcemaps.js";
+import { apiKeyAllowedFor, collectSourcemapFiles, formatProgressLine, preflightSourcemapFiles, resolveSourcemapUploadUrl, SourcemapUploadError, uploadSourcemaps, } from "../sourcemaps.js";
 /** `POST /errors/projects`: creates an Errors project and returns its ingest
  * addresses (`dsn`, `sentryDsn`) in the same response -- the only time they
  * are ever returned (docs/api.md "POST /errors/projects"). The plan's project
@@ -78,11 +78,13 @@ export function errorsIssuesSetStatus(client, verb, id) {
  * `realuptime errors sourcemaps upload <dir-or-files...> --release <v>` (REA-254):
  * wraps `POST /api/errors/v1/sourcemaps/<key>` through the shared upload core
  * in packages/errors-js/sourcemaps.ts (the same code the Vite and webpack
- * plugins call). This is the one command that does NOT use the account API
- * key: the endpoint is ingest-key authenticated, so the credential is the
- * project DSN (`--dsn` / `REALUPTIME_ERRORS_DSN`) or a bare ingest key
- * (`--ingest-key` / `REALUPTIME_ERRORS_INGEST_KEY`, with the origin taken
- * from `--api-url`).
+ * plugins call). The project is named by its DSN (`--dsn` /
+ * `REALUPTIME_ERRORS_DSN`) or a bare ingest key (`--ingest-key` /
+ * `REALUPTIME_ERRORS_INGEST_KEY`, with the origin taken from `--api-url`);
+ * the upload is authorised by the account API key (`--api-key` /
+ * `REALUPTIME_API_KEY`), which needs Errors write access (REA-1264). An
+ * upload without one is accepted until February 17, 2027 with a warning,
+ * which is printed.
  *
  * Progress goes to stderr one batch at a time; the result (stdout) is the
  * summary object, rendered as JSON under --json. Refusals are local and
@@ -112,6 +114,9 @@ export async function errorsSourcemapsUpload(client, positionals, flags, env, st
         throw new CliError(problem);
     for (const name of duplicates)
         stderr(`duplicate artifact name ${name}; the first occurrence was kept`);
+    if (client.apiKey && !apiKeyAllowedFor(url, new URL(client.apiUrl).origin)) {
+        stderr(`the API key is sent only to realuptime.io over https or the --api-url origin; not to ${new URL(url).origin}`);
+    }
     if (flagBoolean(flags, "dry-run")) {
         stderr(`dry run: ${files.length} source map${files.length === 1 ? "" : "s"} would be uploaded for release ${release} to ${url.replace(/rue_[0-9a-f]+$/, "rue_...")}`);
         return {
@@ -121,13 +126,21 @@ export async function errorsSourcemapsUpload(client, positionals, flags, env, st
         };
     }
     try {
-        return await uploadSourcemaps({
+        const summary = await uploadSourcemaps({
             url,
             release,
             files,
+            apiKey: client.apiKey,
+            trustedOrigin: new URL(client.apiUrl).origin,
             fetchImpl: client.fetchImpl,
             onProgress: (progress) => stderr(formatProgressLine(progress)),
         });
+        if (summary.removedReleases.length > 0) {
+            stderr(`to stay within the project's source-map storage, maps were removed for: ${summary.removedReleases.join(", ")}`);
+        }
+        if (summary.warning)
+            stderr(`warning: ${summary.warning}`);
+        return summary;
     }
     catch (cause) {
         if (cause instanceof SourcemapUploadError) {
