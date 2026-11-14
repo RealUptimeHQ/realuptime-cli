@@ -196,6 +196,12 @@ realuptime errors sourcemaps upload dist --release v2.4.1 --dry-run
 A directory is walked for `.map` files; a file over 2MB, more than 50 maps for
 one release, or a missing path exits 1 before any request.
 
+## Running the tests
+
+The suite sits beside the code as `*.test.ts` files and needs Node.js 22 or
+newer. In a checkout, `npm install` and then `npm test` run it; in the source
+workspace, `pnpm test` does. A change to the CLI is expected to come with a test for it.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
